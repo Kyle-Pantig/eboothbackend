@@ -1,48 +1,51 @@
 const express = require("express");
-const cors = require("cors");
-const fs = require("fs");
+const mongoose = require("mongoose");
+require("dotenv").config(); // Load environment variables
 
-const app = express();
+const app = express(); // ✅ Initialize Express
 const PORT = process.env.PORT || 3002;
 
-// Configure CORS to accept requests from localhost:3000
-app.use(
-  cors({
-    origin: ["http://localhost:3000"],
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true, // Allows sending cookies or authentication headers
-  })
-);
+// Connect to MongoDB
+mongoose
+  .connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log("Connected to MongoDB"))
+  .catch((err) => console.error("MongoDB connection error:", err));
 
-// Root Route (Move it Above /api for Proper Routing)
-app.get("/", (req, res) => {
-  res.send("E-Booth Counter Backend is running");
+// Define Schema and Model
+const CounterSchema = new mongoose.Schema({
+  pageviews: Number,
+  visits: Number,
 });
 
-app.get("/api", (req, res) => {
-  if (req.url === "/favicon.ico") {
-    return res.status(204).end(); // No content response for favicon.ico
-  }
+const Counter = mongoose.model("Counter", CounterSchema);
 
+// API Route
+app.get("/api", async (req, res) => {
   try {
-    const json = fs.readFileSync("count.json", "utf-8");
-    const obj = JSON.parse(json);
+    let counter = await Counter.findOne();
 
-    obj.pageviews += 1;
-    if (req.query.type === "visit-pageview") {
-      obj.visits += 1;
+    if (!counter) {
+      counter = new Counter({ pageviews: 0, visits: 0 });
     }
 
-    fs.writeFileSync("count.json", JSON.stringify(obj));
+    counter.pageviews += 1;
+    if (req.query.type === "visit-pageview") {
+      counter.visits += 1;
+    }
 
-    res.json(obj);
+    await counter.save();
+    res.json(counter);
   } catch (error) {
-    console.error("Error reading or writing file:", error);
+    console.error("Database error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
+app.get("/", (req, res) => {
+  res.send("E-Booth Counter Backend is running");
+})
+
+// Start the Server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
